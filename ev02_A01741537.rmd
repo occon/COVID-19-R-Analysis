@@ -1,0 +1,144 @@
+---
+title: "Evidencia 2: Proyecto integrador"
+author: "Hugo Palomares A01741537"
+output: html_notebook
+---
+
+## Parte 2
+
+#### Librerías
+```{r}
+library(Biostrings)
+library(seqinr)
+library(stringr)
+library(ape)
+library(ggtree)
+library(DECIPHER)
+library(viridis)
+library(ggplot2)
+library(phangorn)
+library(phytools)
+library(geiger)
+library(ggmsa)
+```
+#### 0. Información
+```{r}
+titles <- c("United States of America",
+"India","Brazil","France","Russia","Turkey","United Kingdom","Italy","Spain","Germany","Argentina","Colombia","Poland","Iran","Mexico","Peru","Indonesia","Czechia","South Africa","Netherlands")
+short_titles <- c("US","IN","BR","FR","RU","TR","UK","IT","ES","DE","AR","CO","PL","IR","MX","PE","ID","CZ","ZA","NL")
+
+viruses <- c("MZ046426","MW927136","MT925972","HG993784","MZ047312","MW308549","OB994371","MW660619","MW976780","MW822592","MW633891","MT470219","MZ047082","MW898809","MW884219","MW938089","MZ026853","MT534285","MW981442","MW577029")
+
+info <- data.frame(
+  Country = titles,
+  ISO = short_titles,
+  Virus = viruses
+)
+info
+```
+
+
+#### 1. Obtener secuencias
+```{r}
+sequences_DNABin <- read.GenBank(viruses, seq.names = access.nb, species.names = TRUE,
+             as.character = FALSE, chunk.size = 400, quiet = TRUE)
+write.FASTA(sequences_DNABin, file="DNABinSecuencias.fasta")
+
+sequences_DNABin
+```
+
+#### 2. Longitud de secuencias
+```{r}
+sequences_decipher <- readDNAStringSet(c("DNABinSecuencias.fasta"))
+
+dataframe_lengths <- data.frame(
+  Country = titles,
+  Virus = viruses,
+  SequenceLength = width(sequences_decipher)
+)
+dataframe_lengths
+```
+
+#### 3. Comparación de nucleótidos en gráficas
+```{r}
+base_composition = function(text) {
+  total <- width(text)
+  freq <- sapply(c("A", "G", "C", "T"), function(nuc)
+   str_count(text, fixed(nuc)))
+  freq / total
+}
+sequences_composition <- base_composition(sequences_decipher)
+
+dataframe_composition <- data.frame(
+  Adenina = sequences_composition[,1],
+  Timina = sequences_composition[,2],
+  Citosina = sequences_composition[,3],
+  Guanina = sequences_composition[,4],
+  stringsAsFactors=F
+)
+
+colors <- c("blue2","yellow2","red2","green2")
+values <- t(dataframe_composition)
+barplot(
+    main = "1. Distribución de nucleótidos",
+    values,
+    cex.names = 0.74,
+    beside=T,
+    ylim=c(0,0.55),
+    col=colors,
+    names.arg=short_titles,
+    xlab='Variantes por país',
+    ylab='Frecuencia',
+    legend.text=c('Adenina','Timina','Citosina','Guanina')#,
+)
+```
+
+#### 4. Análisis jerárquico global
+```{r}
+aligned_sequences <- AlignSeqs(OrientNucleotides(sequences_decipher))
+
+distance_matrix <- DistanceMatrix(aligned_sequences,
+               type = "matrix",
+               includeTerminalGaps = FALSE,
+               penalizeGapLetterMatches = TRUE,
+               penalizeGapGapMatches = FALSE,
+               correction = "none",
+               processors = 1,
+               verbose = TRUE)
+```
+```{r}
+colnames(distance_matrix) = short_titles
+rownames(distance_matrix) = paste(viruses," - ",short_titles)
+
+tree <- njs(distance_matrix)
+
+ggtree(tree) + 
+  ggtitle("Árbol filogenético", "Figura 2") +
+  geom_tiplab(align=TRUE, linesize=.5) + 
+  xlim(-0.0018, 0.004)
+heatmap(distance_matrix, main="3. Matriz de distancia", Rowv=NA, Colv=NA, col=paste("gray",100:1,sep=""))
+rownames(distance_matrix) = short_titles
+plot(unroot(njs(distance_matrix)), main="4. Árbol filogenético sin raíz (unrooted)", type="unrooted",no.margin=TRUE,lab4ut="axial",
+    edge.width=2)
+plotTree(njs(distance_matrix),main="5. Árbol filogenético (alternativo)",ftype="i",fsize=0.6,lwd=1)
+data.frame(distance_matrix)
+```
+
+#### 5. Interpretación de la gráfica
+Podemos observar que en árbol de la Figura 2 hay dos grupos de variantes separados el uno del otro, pero sin ningún significado obvio, especialmente con un criterio geográfico: estos grupos no respetan continentes ni regiones, están muy mezclados. Considero que esto nos indica el impacto que la existencia del avión como medio de transporte tiene en los contagios. Según datos de *El Universal* (2020), solamente el día el 25 de marzo de 2020 se registraron 94,477 vuelos, muchos de estos siendo internacionales, lo cual nos muestra el gran impacto de este medio de tranporte duran te la pandemia. Y esto, sin tomar en cuenta que también este medio menciona que desde 2016 no se había registrado un número menor a 100,000 vuelos diarios. Además, el mismo día pero de 2019 se registraron 169,056 vuelos, casi el doble. Sin los aviones probablemente las variantes seguirían las fronteras físicas de una manera mucho más definida.
+
+Las variante de Italia es la que difiere más contra todas las demás variantes, tanto en composición como en el árbol filogenético. Esto es visible principalmente en la Figura 3, donde la variante Italiana cuenta con las mayores distancias (los recuadros más oscuros). Los pares de variantes polaca y española y checa y argentina son las más parecidas, teniendo distancias de aprox. 0.001 y 0.0005, respectivamente, según la matriz de distancia mostrada al último. Podemos ver también que la variante de Irán es relativamente parecida a la de Italia, como se puede ver en la Figura 2 en la cual están unidas en el árbol, pero con una composición muy diferente según la Figura 1, pues la variante de Italia tiene muchas más guanina que el resto. Esta variante se comporta de manera muy extraña, pues de acuerdo con la matriz de distancia contra muchas variantes tiene una distancia de cero, pero luego valores muy altos contra otras.
+
+Si observamos bien la Figura 4 con el árbol sin raíz (unrooted), podemos observar que la variante Colombiana es la más parecida a todas, y en la matriz de distancia cuenta con valores sumamente bajos con casi todas las variantes, siendo de 0.002 o menos. Las variantes Italiana e Iraní difieren totalmente una de la otra y del resto, siendo muy curioso cómo a pesar de tener una distancia muy corta entra ellas, difieren en dos formas muy distintas del resto. Esto probablemente se debe a la gran diferencia de composición que se aprecia en la Figura 1. También el virus brasileño se aleja bastante del árbol en la Figura 4, y en el mapa de calor de la Figura 3 también muestra grandes diferencias con algunas otras variantes como la Británica, con una distancia mayor a 0.003 según la matriz de distancia.
+
+#### Conclusiones
+La realidad es que las variantes vistas en cada país sí difieren en diferentes proporciones. Algunas mencionadas previamente como la Italiana, la Iraní o la Brasileña difieren considerablemente del resto, pero las demás son bastante similares entre sí. Sin embargo, estas diferencias no respetan poblaciones o continentes, pues las similitudes y diferencias realmente no respetan ningún límite geográfico, mostrando el impacto de algunos medios de transporte como los aviones.
+
+Los virus presentes en las poblaciones Asiática, Hispana, Europea o Africana, tienen similtudes con virus de otras poblaciones y diferencias con algunos de la misma población, por ende, no consideramos que exista una correlación real.
+
+
+#### Referencias
+Mapas muestran cuánto han disminuido vuelos. (29 de marzo de 2020). En *El Universal*. Recuperado de: [https://www.eluniversal.com.mx/destinos/cuanto-ha-disminuido-el-numero-de-vuelos-diarios-en-el-mundo](https://www.eluniversal.com.mx/destinos/cuanto-ha-disminuido-el-numero-de-vuelos-diarios-en-el-mundo)
+
+#### Link al video
+https://youtu.be/Ic7E2u60blY
